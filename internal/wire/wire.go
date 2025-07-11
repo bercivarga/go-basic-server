@@ -24,6 +24,5 @@ func New(a *app.App) *Components {
 // RegisterRoutes attaches every handler’s routes to the router.
 func (c *Components) RegisterRoutes(r *router.Router) {
 	c.User.Register(r)
-	// c.Payment.Register(r)
 	c.Health.Register(r)
 }

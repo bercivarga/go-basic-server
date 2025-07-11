@@ -1,4 +1,4 @@
-package database
+package clients
 
 import (
 	"database/sql"

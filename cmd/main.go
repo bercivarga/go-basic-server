@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/bercivarga/go-basic-server/internal/app"
-	"github.com/bercivarga/go-basic-server/internal/database"
+	"github.com/bercivarga/go-basic-server/internal/db/clients"
 	"github.com/bercivarga/go-basic-server/internal/logger"
 	"github.com/bercivarga/go-basic-server/internal/router"
 	"github.com/bercivarga/go-basic-server/internal/wire"
@@ -23,7 +23,7 @@ func main() {
 	port := flag.Int("port", defaultPort, "Port to run the server on")
 	flag.Parse()
 
-	sqlite := database.NewSQLite(defaultDSN)
+	sqlite := clients.NewSQLite(defaultDSN)
 
 	if _, err := sqlite.Connect(); err != nil {
 		log.Fatalf("DB connect: %v", err)

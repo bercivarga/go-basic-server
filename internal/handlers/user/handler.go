@@ -11,11 +11,11 @@ import (
 
 type Handler struct {
 	app   *app.App
-	store user.UserStore
+	store *user.Store
 }
 
 func New(a *app.App) *Handler {
-	store := user.NewUserStore(a.DB)
+	store := user.NewStore(a.DB)
 	return &Handler{app: a, store: store}
 }
 
@@ -24,10 +24,16 @@ func (h *Handler) Register(r *router.Router) {
 }
 
 func (h *Handler) list(a *app.App, w http.ResponseWriter, r *http.Request) {
-	users, err := h.store.GetAllUsers()
+	var limit, offset int64 = 10, 0 // TODO: Implement pagination
+	users, err := h.store.GetAll(r.Context(), limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(users)
+
+	err = json.NewEncoder(w).Encode(users)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 }
