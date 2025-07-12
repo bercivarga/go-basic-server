@@ -3,9 +3,14 @@ package session
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/bercivarga/go-basic-server/internal/db/sqlc"
+)
+
+var (
+	ErrSessionExpired = errors.New("session expired")
 )
 
 type Store struct {
@@ -49,10 +54,23 @@ func (s *Store) DeleteByToken(ctx context.Context, token string) error {
 	return nil
 }
 
-func (s *Store) GetByRefreshToken(ctx context.Context, token string) (sqlc.Session, error) {
-	return s.q.GetSessionByRefreshToken(ctx, token)
+func (s *Store) GetByRefreshToken(ctx context.Context, token string) (*sqlc.Session, error) {
+	session, err := s.q.GetSessionByRefreshToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+
+	if session.RefreshExpiresAt.Before(time.Now()) {
+		return nil, ErrSessionExpired
+	}
+
+	return &session, nil
 }
 
 func (s *Store) DeleteByRefreshToken(ctx context.Context, token string) error {
-	return s.q.DeleteSessionByRefreshToken(ctx, token)
+	err := s.q.DeleteSessionByRefreshToken(ctx, token)
+	if err != nil {
+		return err
+	}
+	return nil
 }
