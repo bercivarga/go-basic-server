@@ -24,17 +24,32 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.createSessionStmt, err = db.PrepareContext(ctx, createSession); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateSession: %w", err)
+	}
 	if q.createUserStmt, err = db.PrepareContext(ctx, createUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateUser: %w", err)
 	}
+	if q.deleteSessionByRefreshTokenStmt, err = db.PrepareContext(ctx, deleteSessionByRefreshToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSessionByRefreshToken: %w", err)
+	}
+	if q.deleteSessionByTokenStmt, err = db.PrepareContext(ctx, deleteSessionByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSessionByToken: %w", err)
+	}
 	if q.deleteUserStmt, err = db.PrepareContext(ctx, deleteUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUser: %w", err)
+	}
+	if q.getSessionByRefreshTokenStmt, err = db.PrepareContext(ctx, getSessionByRefreshToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSessionByRefreshToken: %w", err)
 	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
 	if q.getUserByIDStmt, err = db.PrepareContext(ctx, getUserByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByID: %w", err)
+	}
+	if q.isValidSessionStmt, err = db.PrepareContext(ctx, isValidSession); err != nil {
+		return nil, fmt.Errorf("error preparing query IsValidSession: %w", err)
 	}
 	if q.listUsersStmt, err = db.PrepareContext(ctx, listUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUsers: %w", err)
@@ -47,14 +62,34 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
+	if q.createSessionStmt != nil {
+		if cerr := q.createSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createSessionStmt: %w", cerr)
+		}
+	}
 	if q.createUserStmt != nil {
 		if cerr := q.createUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createUserStmt: %w", cerr)
 		}
 	}
+	if q.deleteSessionByRefreshTokenStmt != nil {
+		if cerr := q.deleteSessionByRefreshTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSessionByRefreshTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteSessionByTokenStmt != nil {
+		if cerr := q.deleteSessionByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSessionByTokenStmt: %w", cerr)
+		}
+	}
 	if q.deleteUserStmt != nil {
 		if cerr := q.deleteUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteUserStmt: %w", cerr)
+		}
+	}
+	if q.getSessionByRefreshTokenStmt != nil {
+		if cerr := q.getSessionByRefreshTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSessionByRefreshTokenStmt: %w", cerr)
 		}
 	}
 	if q.getUserByEmailStmt != nil {
@@ -65,6 +100,11 @@ func (q *Queries) Close() error {
 	if q.getUserByIDStmt != nil {
 		if cerr := q.getUserByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByIDStmt: %w", cerr)
+		}
+	}
+	if q.isValidSessionStmt != nil {
+		if cerr := q.isValidSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing isValidSessionStmt: %w", cerr)
 		}
 	}
 	if q.listUsersStmt != nil {
@@ -114,25 +154,35 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                     DBTX
-	tx                     *sql.Tx
-	createUserStmt         *sql.Stmt
-	deleteUserStmt         *sql.Stmt
-	getUserByEmailStmt     *sql.Stmt
-	getUserByIDStmt        *sql.Stmt
-	listUsersStmt          *sql.Stmt
-	updatePasswordHashStmt *sql.Stmt
+	db                              DBTX
+	tx                              *sql.Tx
+	createSessionStmt               *sql.Stmt
+	createUserStmt                  *sql.Stmt
+	deleteSessionByRefreshTokenStmt *sql.Stmt
+	deleteSessionByTokenStmt        *sql.Stmt
+	deleteUserStmt                  *sql.Stmt
+	getSessionByRefreshTokenStmt    *sql.Stmt
+	getUserByEmailStmt              *sql.Stmt
+	getUserByIDStmt                 *sql.Stmt
+	isValidSessionStmt              *sql.Stmt
+	listUsersStmt                   *sql.Stmt
+	updatePasswordHashStmt          *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                     tx,
-		tx:                     tx,
-		createUserStmt:         q.createUserStmt,
-		deleteUserStmt:         q.deleteUserStmt,
-		getUserByEmailStmt:     q.getUserByEmailStmt,
-		getUserByIDStmt:        q.getUserByIDStmt,
-		listUsersStmt:          q.listUsersStmt,
-		updatePasswordHashStmt: q.updatePasswordHashStmt,
+		db:                              tx,
+		tx:                              tx,
+		createSessionStmt:               q.createSessionStmt,
+		createUserStmt:                  q.createUserStmt,
+		deleteSessionByRefreshTokenStmt: q.deleteSessionByRefreshTokenStmt,
+		deleteSessionByTokenStmt:        q.deleteSessionByTokenStmt,
+		deleteUserStmt:                  q.deleteUserStmt,
+		getSessionByRefreshTokenStmt:    q.getSessionByRefreshTokenStmt,
+		getUserByEmailStmt:              q.getUserByEmailStmt,
+		getUserByIDStmt:                 q.getUserByIDStmt,
+		isValidSessionStmt:              q.isValidSessionStmt,
+		listUsersStmt:                   q.listUsersStmt,
+		updatePasswordHashStmt:          q.updatePasswordHashStmt,
 	}
 }

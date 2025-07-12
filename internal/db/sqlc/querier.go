@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	// user/query.sql
 	// ------------------------------------------------------------
 	// Users basic queries for sqlc (SQLite engine)
@@ -16,12 +17,16 @@ type Querier interface {
 	// ------------------------------------------------------------
 	// Create a new user and return the generated row --------------------------------
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	DeleteSessionByRefreshToken(ctx context.Context, refreshToken string) error
+	DeleteSessionByToken(ctx context.Context, token string) error
 	// Delete a user -----------------------------------------------------------------
 	DeleteUser(ctx context.Context, id int64) error
+	GetSessionByRefreshToken(ctx context.Context, refreshToken string) (Session, error)
 	// Fetch a user by unique email ---------------------------------------------------
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	// Fetch a user by primary key ----------------------------------------------------
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	IsValidSession(ctx context.Context, arg IsValidSessionParams) (int64, error)
 	// List active users (simple pagination) -----------------------------------------
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error)
 	// Update only the password hash --------------------------------------------------

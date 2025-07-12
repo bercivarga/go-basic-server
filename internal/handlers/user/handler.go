@@ -3,10 +3,9 @@ package user
 import (
 	"encoding/json"
 	"net/http"
-	"time"
+	"strings"
 
 	"github.com/bercivarga/go-basic-server/internal/app"
-	"github.com/bercivarga/go-basic-server/internal/auth"
 	"github.com/bercivarga/go-basic-server/internal/middleware"
 	"github.com/bercivarga/go-basic-server/internal/router"
 	"github.com/bercivarga/go-basic-server/internal/stores/user"
@@ -14,22 +13,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	JWT_DURATION = 24 * time.Hour * 7 // 7 days
-)
-
 type Handler struct {
-	app        *app.App
-	store      *user.Store
-	jwtManager *auth.JWTManager
+	app   *app.App
+	store *user.Store
 }
 
 func New(a *app.App) *Handler {
 	store := user.NewStore(a.DB)
 
-	jwtManager := auth.NewJWTManager(a.Config.JWTSecret, JWT_DURATION)
-
-	return &Handler{app: a, store: store, jwtManager: jwtManager}
+	return &Handler{app: a, store: store}
 }
 
 func (h *Handler) Register(r *router.Router) {
@@ -37,6 +29,9 @@ func (h *Handler) Register(r *router.Router) {
 
 	r.HandleFunc("/login", h.login)
 	r.HandleFunc("/signup", h.signup)
+	r.HandleFunc("/refresh", h.refresh)
+	r.HandleFunc("/logout", h.logout)
+
 	r.HandleFunc("/me", withAuthMiddleware(h.me))
 	r.HandleFunc("/users", withAuthMiddleware(h.list))
 }
@@ -87,16 +82,96 @@ func (h *Handler) login(a *app.App, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.jwtManager.Generate(u.ID)
+	accessToken, err := a.JwtManager.Generate(u.ID)
 	if err != nil {
-		http.Error(w, "could not create token", http.StatusInternalServerError)
+		http.Error(w, "could not create access token", http.StatusInternalServerError)
 		return
 	}
 
-	expires := time.Now().Add(h.jwtManager.TokenDuration)
-	_ = h.app.SessionStore.Create(r.Context(), u.ID, token, expires)
+	refreshToken, err := utils.GenerateRefreshToken()
+	if err != nil {
+		http.Error(w, "could not create refresh token", http.StatusInternalServerError)
+		return
+	}
 
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	accessTokenExpireAt, refreshTokenExpireAt := a.JwtManager.CreateExpiry()
+
+	err = h.app.SessionStore.Create(r.Context(), u.ID, accessToken, refreshToken, accessTokenExpireAt, refreshTokenExpireAt)
+	if err != nil {
+		http.Error(w, "could not create session", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+	})
+}
+
+func (h *Handler) logout(a *app.App, w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" {
+		http.Error(w, "missing token", http.StatusBadRequest)
+		return
+	}
+
+	err := a.SessionStore.DeleteByToken(r.Context(), token)
+	if err != nil {
+		http.Error(w, "could not delete session", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) refresh(a *app.App, w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Validate refresh token
+	session, err := a.SessionStore.GetByRefreshToken(r.Context(), body.RefreshToken)
+	if err != nil {
+		http.Error(w, "invalid or expired refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	// Create new token pair
+	accessToken, err := a.JwtManager.Generate(session.UserID)
+	if err != nil {
+		http.Error(w, "token generation failed", http.StatusInternalServerError)
+		return
+	}
+
+	newRefreshToken, err := utils.GenerateRefreshToken()
+	if err != nil {
+		http.Error(w, "refresh token generation failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete old session and insert new
+	if err := a.SessionStore.DeleteByRefreshToken(r.Context(), body.RefreshToken); err != nil {
+		http.Error(w, "session cleanup failed", http.StatusInternalServerError)
+		return
+	}
+
+	accessTokenExpireAt, refreshTokenExpireAt := a.JwtManager.CreateExpiry()
+
+	err = a.SessionStore.Create(r.Context(), session.ID, accessToken, newRefreshToken, accessTokenExpireAt, refreshTokenExpireAt)
+	if err != nil {
+		http.Error(w, "session creation failed", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": newRefreshToken,
+	})
 }
 
 func (h *Handler) me(a *app.App, w http.ResponseWriter, r *http.Request) {

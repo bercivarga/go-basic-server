@@ -7,9 +7,15 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const (
+	JWT_DURATION         = 24 * time.Hour * 7  // 7 days
+	JWT_REFRESH_DURATION = 24 * time.Hour * 14 // 14 days
+)
+
 type JWTManager struct {
-	secretKey     string
-	TokenDuration time.Duration
+	secretKey       string
+	TokenDuration   time.Duration
+	RefreshDuration time.Duration
 }
 
 type UserClaims struct {
@@ -17,8 +23,8 @@ type UserClaims struct {
 	jwt.RegisteredClaims
 }
 
-func NewJWTManager(secretKey string, duration time.Duration) *JWTManager {
-	return &JWTManager{secretKey, duration}
+func NewJWTManager(secretKey string) *JWTManager {
+	return &JWTManager{secretKey, JWT_DURATION, JWT_REFRESH_DURATION}
 }
 
 func (j *JWTManager) Generate(userID int64) (string, error) {
@@ -34,7 +40,7 @@ func (j *JWTManager) Generate(userID int64) (string, error) {
 }
 
 func (j *JWTManager) Verify(tokenStr string) (*UserClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenStr, &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, &UserClaims{}, func(token *jwt.Token) (any, error) {
 		return []byte(j.secretKey), nil
 	})
 	if err != nil || !token.Valid {
@@ -45,4 +51,10 @@ func (j *JWTManager) Verify(tokenStr string) (*UserClaims, error) {
 		return nil, errors.New("invalid claims")
 	}
 	return claims, nil
+}
+
+func (j *JWTManager) CreateExpiry() (accessTokenExpireAt, refreshTokenExpireAt time.Time) {
+	accessTokenExpireAt = time.Now().Add(j.TokenDuration)
+	refreshTokenExpireAt = time.Now().Add(j.RefreshDuration)
+	return
 }

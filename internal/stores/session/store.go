@@ -4,29 +4,55 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/bercivarga/go-basic-server/internal/db/sqlc"
 )
 
 type Store struct {
-	db *sql.DB
+	q *sqlc.Queries
 }
 
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+	return &Store{q: sqlc.New(db)}
 }
 
-func (s *Store) Create(ctx context.Context, userID int64, token string, expiresAt time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO sessions (user_id, token, expires_at)
-		VALUES (?, ?, ?)
-	`, userID, token, expiresAt)
-	return err
+func (s *Store) Create(ctx context.Context, userID int64, token, refreshToken string, expiresAt, refreshExpiresAt time.Time) error {
+	err := s.q.CreateSession(ctx, sqlc.CreateSessionParams{
+		UserID:           userID,
+		Token:            token,
+		ExpiresAt:        expiresAt,
+		RefreshToken:     refreshToken,
+		RefreshExpiresAt: refreshExpiresAt,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Store) IsValid(ctx context.Context, userID int64, token string) bool {
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM sessions
-		WHERE user_id = ? AND token = ? AND expires_at > CURRENT_TIMESTAMP
-	`, userID, token).Scan(&count)
-	return err == nil && count == 1
+	count, err := s.q.IsValidSession(ctx, sqlc.IsValidSessionParams{
+		UserID: userID,
+		Token:  token,
+	})
+	if err != nil {
+		return false
+	}
+	return count == 1
+}
+
+func (s *Store) DeleteByToken(ctx context.Context, token string) error {
+	err := s.q.DeleteSessionByToken(ctx, token)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) GetByRefreshToken(ctx context.Context, token string) (sqlc.Session, error) {
+	return s.q.GetSessionByRefreshToken(ctx, token)
+}
+
+func (s *Store) DeleteByRefreshToken(ctx context.Context, token string) error {
+	return s.q.DeleteSessionByRefreshToken(ctx, token)
 }

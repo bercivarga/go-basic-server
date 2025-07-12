@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id INTEGER NOT NULL,
     token TEXT NOT NULL UNIQUE,
     expires_at DATETIME NOT NULL,
+    refresh_token TEXT NOT NULL UNIQUE,
+    refresh_expires_at DATETIME NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );

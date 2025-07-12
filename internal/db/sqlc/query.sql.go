@@ -10,6 +10,30 @@ import (
 	"time"
 )
 
+const createSession = `-- name: CreateSession :exec
+INSERT INTO sessions (user_id, token, expires_at, refresh_token, refresh_expires_at)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type CreateSessionParams struct {
+	UserID           int64     `json:"user_id"`
+	Token            string    `json:"token"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	RefreshToken     string    `json:"refresh_token"`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
+}
+
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
+	_, err := q.exec(ctx, q.createSessionStmt, createSession,
+		arg.UserID,
+		arg.Token,
+		arg.ExpiresAt,
+		arg.RefreshToken,
+		arg.RefreshExpiresAt,
+	)
+	return err
+}
+
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO users (email, password_hash)
@@ -41,6 +65,26 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 	return i, err
 }
 
+const deleteSessionByRefreshToken = `-- name: DeleteSessionByRefreshToken :exec
+DELETE FROM sessions
+WHERE refresh_token = ?
+`
+
+func (q *Queries) DeleteSessionByRefreshToken(ctx context.Context, refreshToken string) error {
+	_, err := q.exec(ctx, q.deleteSessionByRefreshTokenStmt, deleteSessionByRefreshToken, refreshToken)
+	return err
+}
+
+const deleteSessionByToken = `-- name: DeleteSessionByToken :exec
+DELETE FROM sessions
+WHERE token = ?
+`
+
+func (q *Queries) DeleteSessionByToken(ctx context.Context, token string) error {
+	_, err := q.exec(ctx, q.deleteSessionByTokenStmt, deleteSessionByToken, token)
+	return err
+}
+
 const deleteUser = `-- name: DeleteUser :exec
 DELETE FROM users
 WHERE  id = ?
@@ -50,6 +94,26 @@ WHERE  id = ?
 func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
 	_, err := q.exec(ctx, q.deleteUserStmt, deleteUser, id)
 	return err
+}
+
+const getSessionByRefreshToken = `-- name: GetSessionByRefreshToken :one
+SELECT id, user_id, token, expires_at, refresh_token, refresh_expires_at, created_at FROM sessions
+WHERE refresh_token = ? AND refresh_expires_at > CURRENT_TIMESTAMP
+`
+
+func (q *Queries) GetSessionByRefreshToken(ctx context.Context, refreshToken string) (Session, error) {
+	row := q.queryRow(ctx, q.getSessionByRefreshTokenStmt, getSessionByRefreshToken, refreshToken)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Token,
+		&i.ExpiresAt,
+		&i.RefreshToken,
+		&i.RefreshExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
@@ -88,6 +152,23 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const isValidSession = `-- name: IsValidSession :one
+SELECT COUNT(*) FROM sessions
+WHERE user_id = ? AND token = ? AND expires_at > CURRENT_TIMESTAMP
+`
+
+type IsValidSessionParams struct {
+	UserID int64  `json:"user_id"`
+	Token  string `json:"token"`
+}
+
+func (q *Queries) IsValidSession(ctx context.Context, arg IsValidSessionParams) (int64, error) {
+	row := q.queryRow(ctx, q.isValidSessionStmt, isValidSession, arg.UserID, arg.Token)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const listUsers = `-- name: ListUsers :many
