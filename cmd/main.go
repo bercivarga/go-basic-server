@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/bercivarga/go-basic-server/internal/app"
 	"github.com/bercivarga/go-basic-server/internal/db/clients"
-	"github.com/bercivarga/go-basic-server/internal/logger"
+	"github.com/bercivarga/go-basic-server/internal/middleware"
 	"github.com/bercivarga/go-basic-server/internal/router"
 	"github.com/bercivarga/go-basic-server/internal/wire"
 )
@@ -20,6 +22,11 @@ const (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	port := flag.Int("port", defaultPort, "Port to run the server on")
 	flag.Parse()
 
@@ -28,9 +35,14 @@ func main() {
 	if _, err := sqlite.Connect(); err != nil {
 		log.Fatalf("DB connect: %v", err)
 	}
-	defer sqlite.Close()
+	defer func(sqlite *clients.SQLite) {
+		err := sqlite.Close()
+		if err != nil {
+			log.Fatalf("DB close: %v", err)
+		}
+	}(sqlite)
 
-	app := app.NewApp(sqlite.DB, logger.New())
+	app := app.NewApp(sqlite.DB)
 
 	router := router.New(app)
 
@@ -42,12 +54,12 @@ func main() {
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
-		Handler:      logger.Middleware(router),
+		Handler:      middleware.Logger(router),
 	}
 
 	log.Printf("Starting server on port %d", *port)
-	err := server.ListenAndServe()
-	if err != nil {
-		log.Fatalf("Server listen: %v", err)
+	serverStartErr := server.ListenAndServe()
+	if serverStartErr != nil {
+		log.Fatalf("Server listen: %v", serverStartErr)
 	}
 }

@@ -1,7 +1,7 @@
 # ---- config ---------------------------------------------------------------
 DRIVER       := sqlite3
 DB           := localSQLite.db
-MIGR_DIR     := ./migrations
+MIGR_DIR     := ./internal/db/migrations
 GOOSE_VER    := v3.24.3
 SQLC_VER     := v1.29.0
 

@@ -37,3 +37,22 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*sqlc.User, error) {
 	}
 	return &sqlc.User{ID: r.ID, Email: r.Email}, nil
 }
+
+func (s *Store) GetByEmail(ctx context.Context, email string) (*sqlc.User, error) {
+	r, err := s.q.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	return &sqlc.User{ID: r.ID, Email: r.Email, PasswordHash: r.PasswordHash}, nil
+}
+
+func (s *Store) Create(ctx context.Context, email string, passwordHash string) (*sqlc.User, error) {
+	r, err := s.q.CreateUser(ctx, sqlc.CreateUserParams{
+		Email:        email,
+		PasswordHash: passwordHash,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &sqlc.User{ID: r.ID, Email: r.Email}, nil
+}

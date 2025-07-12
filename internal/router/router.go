@@ -30,8 +30,11 @@ func (r *Router) Handle(pattern string, h http.Handler) {
 	r.mux.Handle(pattern, h)
 }
 
+// HandleFuncWithApp describes a handler that captures *app.App.
+type HandleFuncWithApp func(*app.App, http.ResponseWriter, *http.Request)
+
 // HandleFunc shortcuts to http.HandlerFunc and captures *app.App.
-func (r *Router) HandleFunc(pattern string, fn func(*app.App, http.ResponseWriter, *http.Request)) {
+func (r *Router) HandleFunc(pattern string, fn HandleFuncWithApp) {
 	r.mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
 		fn(r.app, w, req)
 	})
