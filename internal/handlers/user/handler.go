@@ -3,25 +3,20 @@ package user
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
+	"strconv"
 
 	"github.com/bercivarga/go-basic-server/internal/app"
 	"github.com/bercivarga/go-basic-server/internal/middleware"
 	"github.com/bercivarga/go-basic-server/internal/router"
-	"github.com/bercivarga/go-basic-server/internal/stores/user"
-	"github.com/bercivarga/go-basic-server/internal/utils"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/bercivarga/go-basic-server/internal/services/user"
 )
 
 type Handler struct {
-	app   *app.App
-	store *user.Store
+	app *app.App
 }
 
 func New(a *app.App) *Handler {
-	store := user.NewStore(a.DB)
-
-	return &Handler{app: a, store: store}
+	return &Handler{app: a}
 }
 
 func (h *Handler) Register(r *router.Router) {
@@ -31,123 +26,8 @@ func (h *Handler) Register(r *router.Router) {
 		middleware.AdminOnly,
 	)
 
-	r.HandleFunc("/login", h.login)
-	r.HandleFunc("/signup", h.signup)
-	r.HandleFunc("/refresh", h.refresh)
-	r.HandleFunc("/logout", h.logout)
-
-	r.HandleFunc("/me", withAuthMiddleware(h.me))
-	r.HandleFunc("/users", withAdminMiddleware(h.list))
-}
-
-func (h *Handler) signup(a *app.App, w http.ResponseWriter, r *http.Request) {
-	var creds struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(creds.Password), bcrypt.DefaultCost)
-	if err != nil {
-		http.Error(w, "hashing failed", http.StatusInternalServerError)
-		return
-	}
-
-	_, err = h.store.Create(r.Context(), creds.Email, string(hash))
-	if err != nil {
-		http.Error(w, "user exists or db error", http.StatusBadRequest)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-}
-
-func (h *Handler) login(a *app.App, w http.ResponseWriter, r *http.Request) {
-	var creds struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-
-	tokens, err := a.AuthService.Login(r.Context(), creds.Email, creds.Password)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	json.NewEncoder(w).Encode(tokens)
-}
-
-func (h *Handler) logout(a *app.App, w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if token == "" {
-		http.Error(w, "missing token", http.StatusBadRequest)
-		return
-	}
-
-	err := a.AuthService.SessionStore.DeleteByToken(r.Context(), token)
-	if err != nil {
-		http.Error(w, "could not delete session", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) refresh(a *app.App, w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-
-	// Validate refresh token
-	session, err := a.AuthService.SessionStore.GetByRefreshToken(r.Context(), body.RefreshToken)
-	if err != nil {
-		http.Error(w, "invalid or expired refresh token", http.StatusUnauthorized)
-		return
-	}
-
-	// Create new token pair
-	accessToken, err := a.AuthService.JwtManager.Generate(session.UserID)
-	if err != nil {
-		http.Error(w, "token generation failed", http.StatusInternalServerError)
-		return
-	}
-
-	newRefreshToken, err := utils.GenerateRefreshToken()
-	if err != nil {
-		http.Error(w, "refresh token generation failed", http.StatusInternalServerError)
-		return
-	}
-
-	// Delete old session and insert new
-	if err := a.AuthService.SessionStore.DeleteByRefreshToken(r.Context(), body.RefreshToken); err != nil {
-		http.Error(w, "session cleanup failed", http.StatusInternalServerError)
-		return
-	}
-
-	accessTokenExpireAt, refreshTokenExpireAt := a.AuthService.JwtManager.CreateExpiry()
-
-	err = a.AuthService.SessionStore.Create(r.Context(), session.ID, accessToken, newRefreshToken, accessTokenExpireAt, refreshTokenExpireAt)
-	if err != nil {
-		http.Error(w, "session creation failed", http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]string{
-		"access_token":  accessToken,
-		"refresh_token": newRefreshToken,
-	})
+	r.HandleFunc("/users/me", withAuthMiddleware(h.me))
+	r.HandleFunc("/users/list", withAdminMiddleware(h.list))
 }
 
 func (h *Handler) me(a *app.App, w http.ResponseWriter, r *http.Request) {
@@ -158,38 +38,44 @@ func (h *Handler) me(a *app.App, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.store.GetByID(ctx, userID)
+	user, err := a.UserService.GetUserByID(ctx, userID)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	meData := struct {
-		Email string `json:"email"`
-		Role  string `json:"role"`
-	}{
-		Email: user.Email,
-		Role:  user.Role,
-	}
-
-	err = json.NewEncoder(w).Encode(meData)
+	err = json.NewEncoder(w).Encode(user)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
 func (h *Handler) list(a *app.App, w http.ResponseWriter, r *http.Request) {
-	var limit, offset int64 = 10, 0 // TODO: Implement pagination
-	users, err := h.store.GetAll(r.Context(), limit, offset)
+	var limit, offset int64
+
+	limit, err := strconv.ParseInt(r.URL.Query().Get("limit"), 10, 64)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		limit = 10
+	}
+
+	offset, err = strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
+	if err != nil {
+		offset = 0
+	}
+
+	users, err := a.UserService.ListUsers(r.Context(), user.ListUsersRequest{
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	err = json.NewEncoder(w).Encode(users)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }

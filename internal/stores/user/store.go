@@ -25,7 +25,7 @@ func (s *Store) GetAll(ctx context.Context, limit, offset int64) ([]sqlc.User, e
 	}
 	out := make([]sqlc.User, len(rows))
 	for i, r := range rows {
-		out[i] = sqlc.User{ID: r.ID, Email: r.Email}
+		out[i] = sqlc.User{ID: r.ID, Email: r.Email, Role: r.Role}
 	}
 	return out, nil
 }
