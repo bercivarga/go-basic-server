@@ -21,9 +21,11 @@ type Querier interface {
 	DeleteSessionByToken(ctx context.Context, token string) error
 	// Delete a user -----------------------------------------------------------------
 	DeleteUser(ctx context.Context, id int64) error
+	// Get user role -----------------------------------------------------------------
+	GetRole(ctx context.Context, id int64) (string, error)
 	GetSessionByRefreshToken(ctx context.Context, refreshToken string) (Session, error)
 	// Fetch a user by unique email ---------------------------------------------------
-	GetUserByEmail(ctx context.Context, email string) (User, error)
+	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	// Fetch a user by primary key ----------------------------------------------------
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	IsValidSession(ctx context.Context, arg IsValidSessionParams) (int64, error)

@@ -39,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteUserStmt, err = db.PrepareContext(ctx, deleteUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUser: %w", err)
 	}
+	if q.getRoleStmt, err = db.PrepareContext(ctx, getRole); err != nil {
+		return nil, fmt.Errorf("error preparing query GetRole: %w", err)
+	}
 	if q.getSessionByRefreshTokenStmt, err = db.PrepareContext(ctx, getSessionByRefreshToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSessionByRefreshToken: %w", err)
 	}
@@ -85,6 +88,11 @@ func (q *Queries) Close() error {
 	if q.deleteUserStmt != nil {
 		if cerr := q.deleteUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteUserStmt: %w", cerr)
+		}
+	}
+	if q.getRoleStmt != nil {
+		if cerr := q.getRoleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getRoleStmt: %w", cerr)
 		}
 	}
 	if q.getSessionByRefreshTokenStmt != nil {
@@ -161,6 +169,7 @@ type Queries struct {
 	deleteSessionByRefreshTokenStmt *sql.Stmt
 	deleteSessionByTokenStmt        *sql.Stmt
 	deleteUserStmt                  *sql.Stmt
+	getRoleStmt                     *sql.Stmt
 	getSessionByRefreshTokenStmt    *sql.Stmt
 	getUserByEmailStmt              *sql.Stmt
 	getUserByIDStmt                 *sql.Stmt
@@ -178,6 +187,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteSessionByRefreshTokenStmt: q.deleteSessionByRefreshTokenStmt,
 		deleteSessionByTokenStmt:        q.deleteSessionByTokenStmt,
 		deleteUserStmt:                  q.deleteUserStmt,
+		getRoleStmt:                     q.getRoleStmt,
 		getSessionByRefreshTokenStmt:    q.getSessionByRefreshTokenStmt,
 		getUserByEmailStmt:              q.getUserByEmailStmt,
 		getUserByIDStmt:                 q.getUserByIDStmt,

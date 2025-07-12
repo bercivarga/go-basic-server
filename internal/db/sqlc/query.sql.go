@@ -96,6 +96,19 @@ func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 
+const getRole = `-- name: GetRole :one
+SELECT role FROM users
+WHERE id = ?
+`
+
+// Get user role -----------------------------------------------------------------
+func (q *Queries) GetRole(ctx context.Context, id int64) (string, error) {
+	row := q.queryRow(ctx, q.getRoleStmt, getRole, id)
+	var role string
+	err := row.Scan(&role)
+	return role, err
+}
+
 const getSessionByRefreshToken = `-- name: GetSessionByRefreshToken :one
 SELECT id, user_id, token, expires_at, refresh_token, refresh_expires_at, created_at FROM sessions
 WHERE refresh_token = ? AND refresh_expires_at > CURRENT_TIMESTAMP
@@ -122,10 +135,17 @@ FROM   users
 WHERE  email = ?
 `
 
+type GetUserByEmailRow struct {
+	ID           int64     `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"password_hash"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 // Fetch a user by unique email ---------------------------------------------------
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error) {
 	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, email)
-	var i User
+	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
@@ -136,7 +156,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, created_at
+SELECT id, email, password_hash, role, created_at
 FROM   users
 WHERE  id = ?
 `
@@ -149,6 +169,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.Role,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -172,7 +193,7 @@ func (q *Queries) IsValidSession(ctx context.Context, arg IsValidSessionParams) 
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, created_at
+SELECT id, email, role, created_at
 FROM   users
 ORDER  BY id
 LIMIT  ?  OFFSET ?
@@ -186,6 +207,7 @@ type ListUsersParams struct {
 type ListUsersRow struct {
 	ID        int64     `json:"id"`
 	Email     string    `json:"email"`
+	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -199,7 +221,12 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUse
 	var items []ListUsersRow
 	for rows.Next() {
 		var i ListUsersRow
-		if err := rows.Scan(&i.ID, &i.Email, &i.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.Role,
+			&i.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

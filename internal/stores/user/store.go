@@ -35,7 +35,7 @@ func (s *Store) GetByID(ctx context.Context, id int64) (*sqlc.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sqlc.User{ID: r.ID, Email: r.Email}, nil
+	return &sqlc.User{ID: r.ID, Email: r.Email, Role: r.Role}, nil
 }
 
 func (s *Store) GetByEmail(ctx context.Context, email string) (*sqlc.User, error) {
@@ -55,4 +55,12 @@ func (s *Store) Create(ctx context.Context, email string, passwordHash string) (
 		return nil, err
 	}
 	return &sqlc.User{ID: r.ID, Email: r.Email}, nil
+}
+
+func (s *Store) GetRole(ctx context.Context, userID int64) (string, error) {
+	userRole, err := s.q.GetRole(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return userRole, nil
 }

@@ -39,3 +39,13 @@ func (r *Router) HandleFunc(pattern string, fn HandleFuncWithApp) {
 		fn(r.app, w, req)
 	})
 }
+
+// ComposeMiddleware composes multiple middleware functions into a single middleware function.
+func ComposeMiddleware(middlewares ...func(HandleFuncWithApp) HandleFuncWithApp) func(HandleFuncWithApp) HandleFuncWithApp {
+	return func(next HandleFuncWithApp) HandleFuncWithApp {
+		for i := len(middlewares) - 1; i >= 0; i-- {
+			next = middlewares[i](next)
+		}
+		return next
+	}
+}

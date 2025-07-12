@@ -12,7 +12,7 @@ RETURNING id, email, created_at;
 
 -- Fetch a user by primary key ----------------------------------------------------
 -- name: GetUserByID :one
-SELECT id, email, password_hash, created_at
+SELECT id, email, password_hash, role, created_at
 FROM   users
 WHERE  id = ?;
 
@@ -22,9 +22,14 @@ SELECT id, email, password_hash, created_at
 FROM   users
 WHERE  email = ?;
 
+-- Get user role -----------------------------------------------------------------
+-- name: GetRole :one
+SELECT role FROM users
+WHERE id = ?;
+
 -- List active users (simple pagination) -----------------------------------------
 -- name: ListUsers :many
-SELECT id, email, created_at
+SELECT id, email, role, created_at
 FROM   users
 ORDER  BY id
 LIMIT  ?  OFFSET ?;

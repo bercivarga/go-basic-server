@@ -25,7 +25,11 @@ func New(a *app.App) *Handler {
 }
 
 func (h *Handler) Register(r *router.Router) {
-	withAuthMiddleware := utils.ComposeMiddleware(middleware.Auth)
+	withAuthMiddleware := router.ComposeMiddleware(middleware.Auth)
+	withAdminMiddleware := router.ComposeMiddleware(
+		middleware.Auth,
+		middleware.AdminOnly,
+	)
 
 	r.HandleFunc("/login", h.login)
 	r.HandleFunc("/signup", h.signup)
@@ -33,7 +37,7 @@ func (h *Handler) Register(r *router.Router) {
 	r.HandleFunc("/logout", h.logout)
 
 	r.HandleFunc("/me", withAuthMiddleware(h.me))
-	r.HandleFunc("/users", withAuthMiddleware(h.list))
+	r.HandleFunc("/users", withAdminMiddleware(h.list))
 }
 
 func (h *Handler) signup(a *app.App, w http.ResponseWriter, r *http.Request) {
@@ -71,41 +75,13 @@ func (h *Handler) login(a *app.App, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := h.store.GetByEmail(r.Context(), creds.Email)
+	tokens, err := a.AuthService.Login(r.Context(), creds.Email, creds.Password)
 	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	if !utils.CheckPasswordHash(creds.Password, u.PasswordHash) {
-		http.Error(w, "invalid password", http.StatusUnauthorized)
-		return
-	}
-
-	accessToken, err := a.JwtManager.Generate(u.ID)
-	if err != nil {
-		http.Error(w, "could not create access token", http.StatusInternalServerError)
-		return
-	}
-
-	refreshToken, err := utils.GenerateRefreshToken()
-	if err != nil {
-		http.Error(w, "could not create refresh token", http.StatusInternalServerError)
-		return
-	}
-
-	accessTokenExpireAt, refreshTokenExpireAt := a.JwtManager.CreateExpiry()
-
-	err = h.app.SessionStore.Create(r.Context(), u.ID, accessToken, refreshToken, accessTokenExpireAt, refreshTokenExpireAt)
-	if err != nil {
-		http.Error(w, "could not create session", http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(map[string]string{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
-	})
+	json.NewEncoder(w).Encode(tokens)
 }
 
 func (h *Handler) logout(a *app.App, w http.ResponseWriter, r *http.Request) {
@@ -116,7 +92,7 @@ func (h *Handler) logout(a *app.App, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := a.SessionStore.DeleteByToken(r.Context(), token)
+	err := a.AuthService.SessionStore.DeleteByToken(r.Context(), token)
 	if err != nil {
 		http.Error(w, "could not delete session", http.StatusInternalServerError)
 		return
@@ -135,14 +111,14 @@ func (h *Handler) refresh(a *app.App, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate refresh token
-	session, err := a.SessionStore.GetByRefreshToken(r.Context(), body.RefreshToken)
+	session, err := a.AuthService.SessionStore.GetByRefreshToken(r.Context(), body.RefreshToken)
 	if err != nil {
 		http.Error(w, "invalid or expired refresh token", http.StatusUnauthorized)
 		return
 	}
 
 	// Create new token pair
-	accessToken, err := a.JwtManager.Generate(session.UserID)
+	accessToken, err := a.AuthService.JwtManager.Generate(session.UserID)
 	if err != nil {
 		http.Error(w, "token generation failed", http.StatusInternalServerError)
 		return
@@ -155,14 +131,14 @@ func (h *Handler) refresh(a *app.App, w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete old session and insert new
-	if err := a.SessionStore.DeleteByRefreshToken(r.Context(), body.RefreshToken); err != nil {
+	if err := a.AuthService.SessionStore.DeleteByRefreshToken(r.Context(), body.RefreshToken); err != nil {
 		http.Error(w, "session cleanup failed", http.StatusInternalServerError)
 		return
 	}
 
-	accessTokenExpireAt, refreshTokenExpireAt := a.JwtManager.CreateExpiry()
+	accessTokenExpireAt, refreshTokenExpireAt := a.AuthService.JwtManager.CreateExpiry()
 
-	err = a.SessionStore.Create(r.Context(), session.ID, accessToken, newRefreshToken, accessTokenExpireAt, refreshTokenExpireAt)
+	err = a.AuthService.SessionStore.Create(r.Context(), session.ID, accessToken, newRefreshToken, accessTokenExpireAt, refreshTokenExpireAt)
 	if err != nil {
 		http.Error(w, "session creation failed", http.StatusInternalServerError)
 		return
@@ -175,8 +151,32 @@ func (h *Handler) refresh(a *app.App, w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) me(a *app.App, w http.ResponseWriter, r *http.Request) {
-	// Example protected route
-	w.Write([]byte("You are authenticated"))
+	ctx := r.Context()
+	userID, ok := middleware.GetUserIdFromContext(ctx)
+	if !ok {
+		http.Error(w, "user id not found", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := h.store.GetByID(ctx, userID)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	meData := struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}{
+		Email: user.Email,
+		Role:  user.Role,
+	}
+
+	err = json.NewEncoder(w).Encode(meData)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 }
 
 func (h *Handler) list(a *app.App, w http.ResponseWriter, r *http.Request) {
