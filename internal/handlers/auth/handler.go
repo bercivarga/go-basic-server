@@ -22,11 +22,11 @@ func New(a *app.App) *Handler {
 func (h *Handler) Register(r *router.Router) {
 	withAuthMiddleware := router.ComposeMiddleware(middleware.Auth)
 
-	r.HandleFunc("/auth/signup", h.signup)
-	r.HandleFunc("/auth/login", h.login)
-	r.HandleFunc("/auth/refresh", h.refresh)
+	r.HandleFunc(http.MethodPost, "/auth/signup", h.signup)
+	r.HandleFunc(http.MethodPost, "/auth/login", h.login)
+	r.HandleFunc(http.MethodPost, "/auth/refresh", h.refresh)
 
-	r.HandleFunc("/auth/logout", withAuthMiddleware(h.logout))
+	r.HandleFunc(http.MethodPost, "/auth/logout", withAuthMiddleware(h.logout))
 }
 
 type SignupRequest struct {

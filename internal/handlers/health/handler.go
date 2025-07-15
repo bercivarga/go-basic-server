@@ -17,7 +17,7 @@ func New(a *app.App) *Handler {
 }
 
 func (h *Handler) Register(r *router.Router) {
-	r.HandleFunc("/health", h.HealthCheck)
+	r.HandleFunc(http.MethodGet, "/health", h.HealthCheck)
 }
 
 func (h *Handler) HealthCheck(a *app.App, w http.ResponseWriter, r *http.Request) {

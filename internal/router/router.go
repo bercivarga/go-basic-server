@@ -34,8 +34,13 @@ func (r *Router) Handle(pattern string, h http.Handler) {
 type HandleFuncWithApp func(*app.App, http.ResponseWriter, *http.Request)
 
 // HandleFunc shortcuts to http.HandlerFunc and captures *app.App.
-func (r *Router) HandleFunc(pattern string, fn HandleFuncWithApp) {
+func (r *Router) HandleFunc(method string, pattern string, fn HandleFuncWithApp) {
 	r.mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != method {
+			w.Header().Set("Allow", method)
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
 		fn(r.app, w, req)
 	})
 }

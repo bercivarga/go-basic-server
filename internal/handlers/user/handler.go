@@ -26,8 +26,8 @@ func (h *Handler) Register(r *router.Router) {
 		middleware.AdminOnly,
 	)
 
-	r.HandleFunc("/users/me", withAuthMiddleware(h.me))
-	r.HandleFunc("/users/list", withAdminMiddleware(h.list))
+	r.HandleFunc(http.MethodGet, "/users/me", withAuthMiddleware(h.me))
+	r.HandleFunc(http.MethodGet, "/users/list", withAdminMiddleware(h.list))
 }
 
 func (h *Handler) me(a *app.App, w http.ResponseWriter, r *http.Request) {
