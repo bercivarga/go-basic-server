@@ -3,12 +3,12 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/bercivarga/go-basic-server/internal/app"
 	"github.com/bercivarga/go-basic-server/internal/middleware"
 	"github.com/bercivarga/go-basic-server/internal/router"
 	"github.com/bercivarga/go-basic-server/internal/services/user"
+	"github.com/bercivarga/go-basic-server/internal/utils"
 )
 
 type Handler struct {
@@ -29,13 +29,15 @@ func (h *Handler) Register(r *router.Router) {
 	r.HandleFunc("/auth/logout", withAuthMiddleware(h.logout))
 }
 
+type SignupRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
 func (h *Handler) signup(a *app.App, w http.ResponseWriter, r *http.Request) {
-	var creds struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	var creds SignupRequest
+	if err := utils.BindAndValidate(r, &creds); err != nil {
+		utils.RespondWithValidationErrors(w, err)
 		return
 	}
 
@@ -51,13 +53,15 @@ func (h *Handler) signup(a *app.App, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+type LoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
 func (h *Handler) login(a *app.App, w http.ResponseWriter, r *http.Request) {
-	var creds struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	var creds LoginRequest
+	if err := utils.BindAndValidate(r, &creds); err != nil {
+		utils.RespondWithValidationErrors(w, err)
 		return
 	}
 
@@ -70,11 +74,18 @@ func (h *Handler) login(a *app.App, w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tokens)
 }
 
+type LogoutRequestHeaders struct {
+	Authorization string `validate:"required,jwt"`
+}
+
 func (h *Handler) logout(a *app.App, w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if token == "" {
-		http.Error(w, "missing token", http.StatusBadRequest)
+	token := utils.ExtractBearerToken(r)
+	validationData := LogoutRequestHeaders{
+		Authorization: token,
+	}
+
+	if err := utils.Validate(validationData); err != nil {
+		utils.RespondWithValidationErrors(w, err)
 		return
 	}
 
@@ -87,12 +98,14 @@ func (h *Handler) logout(a *app.App, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
 func (h *Handler) refresh(a *app.App, w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+	var body RefreshRequest
+	if err := utils.BindAndValidate(r, &body); err != nil {
+		utils.RespondWithValidationErrors(w, err)
 		return
 	}
 
